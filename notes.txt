@@ -1,0 +1,9 @@
+pops needed for ABMs, made from samples
+curse of dims
+smoothing aka not sampling
+zero sampling
+VAE compared to trad models: Gibbs and Bayesian net
+VAEs learn underlying joint probabilities in high dimensional data
+VAE (specifically Dl) can be extended to better accomodate spatial, graph and sequential popukation characteristics (ie locations, networks and activity plans)
+
+

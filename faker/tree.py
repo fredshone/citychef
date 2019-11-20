@@ -257,14 +257,4 @@ class RegularBlock:
             # top neighbours
             top_neighbours = self.get_neighbors(self.Direction.N)
             points = []
-
-
-
-
-
-
-
-
-
-
-
+    
