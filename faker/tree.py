@@ -1,12 +1,9 @@
 import numpy as np
 from enum import Enum, IntEnum
+from shapely.geometry import Polygon
 
 
 class RegularBlock:
-
-    children = []
-    leaf = False
-    name = None
 
     class Child(IntEnum):
         SW = 0
@@ -24,42 +21,41 @@ class RegularBlock:
         W = 6
         E = 7
 
-    def __init__(self, bbox, locs, max_points, parent=None, depth=0):
+    def __init__(self, bbox, data, max_points, parent=None, depth=0):
 
         """
         :param bbox: [[minx, miny], [maxx, maxy]]
         :param locs: [[index, x, y],]
         :param max_points: int
         """
+        self.children = []
+        self.leaf = False
+        self.name = None
+        self.junctions = None
         self.parent = parent
         self.depth = depth
-        num_points = len(locs)
-        print(num_points)
-        centre = bbox.mean(axis=0)
-        print(centre)
+        self.num_points = len(data)
+        self.bbox = bbox
+        self.centre = bbox.mean(axis=0)
+        self.data = data
 
-        if num_points > max_points:
-            self.divide(bbox, centre, locs, max_points)
+        if self.num_points > max_points:
+            self.divide(bbox, self.centre, data, max_points)
         else:
             self.leaf = True
-            self.locs = locs
-            self.centre = centre
-            self.bbox = bbox
-            print(bbox)
-            self.num_points = num_points
 
-    def divide(self, bbox, centre, locs, max_points):
+    def divide(self, bbox, centre, data, max_points):
 
-        left = locs[:, 1] < centre[0]
-        bottom = locs[:, 2] < centre[1]
+        left = data[:, 1] < centre[0]
+        bottom = data[:, 2] < centre[1]
 
         # bottom left
         minx, miny, maxx, maxy = bbox[0, 0], bbox[0, 1], centre[0], centre[1]
         self.children.append(
             RegularBlock(
-                np.array([[minx, miny], [maxx, maxy]]),
-                locs[left & bottom],
-                max_points,
+                bbox=np.array([[minx, miny], [maxx, maxy]]),
+                data=data[left & bottom],
+                max_points=max_points,
                 parent=self,
                 depth=self.depth + 1
             )
@@ -69,9 +65,9 @@ class RegularBlock:
         minx, miny, maxx, maxy = bbox[0, 0], centre[1], centre[0], bbox[1, 1]
         self.children.append(
             RegularBlock(
-                np.array([[minx, miny], [maxx, maxy]]),
-                locs[left & ~bottom],
-                max_points,
+                bbox=np.array([[minx, miny], [maxx, maxy]]),
+                data=data[left & ~bottom],
+                max_points=max_points,
                 parent=self,
                 depth=self.depth + 1
             )
@@ -81,9 +77,9 @@ class RegularBlock:
         minx, miny, maxx, maxy = centre[0], centre[1], bbox[1, 0], bbox[1, 1]
         self.children.append(
             RegularBlock(
-                np.array([[minx, miny], [maxx, maxy]]),
-                locs[~left & ~bottom],
-                max_points,
+                bbox=np.array([[minx, miny], [maxx, maxy]]),
+                data=data[~left & ~bottom],
+                max_points=max_points,
                 parent=self,
                 depth=self.depth + 1
             )
@@ -93,9 +89,9 @@ class RegularBlock:
         minx, miny, maxx, maxy = centre[0], bbox[0, 1], bbox[1, 0], centre[1]
         self.children.append(
             RegularBlock(
-                np.array([[minx, miny], [maxx, maxy]]),
-                locs[~left & bottom],
-                max_points,
+                bbox=np.array([[minx, miny], [maxx, maxy]]),
+                data=data[~left & bottom],
+                max_points=max_points,
                 parent=self,
                 depth=self.depth + 1
             )
@@ -105,14 +101,72 @@ class RegularBlock:
         return not self.children
 
     def traverse(self):
+        yield self
+        for t in self.children:
+            yield from t.traverse()
+
+    def traverse_leaves(self):
 
         if self.leaf:
             yield self
         else:
             for t in self.children:
-                t.traverse()
+                t.traverse_leaves()
                 yield t
             yield self
+
+    def build_block_net(self, idx, G):
+
+        ((minx, miny), (maxx, maxy)) = self.bbox
+        centre_x, centre_y = self.centre[0], self.centre[1]
+        offset_ns = (maxx - minx) / 4
+        offset_ew = (maxy - miny) / 4
+
+        self.junctions = {
+            "centre": (f"{idx}_centre", (centre_x, centre_y)),
+            "north": (f"{idx}_north", (centre_x, centre_y + offset_ns)),
+            "south": (f"{idx}_south", (centre_x, centre_y - offset_ns)),
+            "east": (f"{idx}_east", (centre_x + offset_ew, centre_y)),
+            "west": (f"{idx}_west", (centre_x - offset_ew, centre_y)),
+        }
+
+        for n, (name, pos) in self.junctions.items():
+
+            G.add_node(name, pos=pos)
+
+            if n == "centre":
+                continue
+            if n in ["north", "south"]:
+                G.add_edge(self.junctions["centre"][0], name, weight=offset_ns)
+
+            G.add_edge(self.junctions["centre"][0], name, weight=offset_ew)
+
+        if self.parent:
+
+            # need to connect
+            if self.parent.children[self.Child.SW] == self:
+                # connect self north to parent west
+                G.add_edge(self.junctions["north"][0], self.parent.junctions["west"][0], weight=offset_ns)
+                # connect self east to parent south
+                G.add_edge(self.junctions["east"][0], self.parent.junctions["south"][0], weight=offset_ew)
+
+            elif self.parent.children[self.Child.NW] == self:
+                # connect self south to parent west
+                G.add_edge(self.junctions["south"][0], self.parent.junctions["west"][0], weight=offset_ns)
+                # connect self east to parent north
+                G.add_edge(self.junctions["east"][0], self.parent.junctions["north"][0], weight=offset_ew)
+
+            elif self.parent.children[self.Child.NE] == self:
+                # connect self south to parent east
+                G.add_edge(self.junctions["south"][0], self.parent.junctions["east"][0], weight=offset_ns)
+                # connect self west to parent north
+                G.add_edge(self.junctions["west"][0], self.parent.junctions["north"][0], weight=offset_ew)
+
+            elif self.parent.children[self.Child.SE] == self:
+                # connect self north to parent east
+                G.add_edge(self.junctions["north"][0], self.parent.junctions["east"][0], weight=offset_ns)
+                # connect self west to parent south
+                G.add_edge(self.junctions["west"][0], self.parent.junctions["south"][0], weight=offset_ew)
 
     def get_neighbor_of_greater_or_equal_size(self, direction):
         if direction == self.Direction.N:
@@ -242,19 +296,22 @@ class RegularBlock:
         neighbors = self.find_neighbors_of_smaller_size(neighbor, direction)
         return neighbors
 
-    def roads(self):
+    def district(self):
+        ((minx, miny), (maxx, maxy)) = self.bbox
+        return Polygon([(minx, miny), (maxx, miny), (maxx, maxy), (minx, maxy)])
 
-        if self.leaf:
+    def get_point_ids(self):
+        return self.data[:, 0]
 
-            centre = self.centre
-            x = centre[0]
-            y = centre[1]
-            bottom = self.bbox[0, 1]
-            left = self.bbox[0, 0]
-            top = self.bbox[1, 1]
-            right = self.bbox[1, 0]
+    def build_point_data(self, idx):
+        ones = np.ones(self.num_points)
+        idx_array = ones * idx
+        point_ids = self.get_point_ids()
+        return np.stack((point_ids, idx_array), axis=1)
 
-            # top neighbours
-            top_neighbours = self.get_neighbors(self.Direction.N)
-            points = []
-    
+    def area(self):
+        ((minx, miny), (maxx, maxy)) = self.bbox
+        return (maxx - minx) * (maxy - miny)
+
+    def density(self):
+        return self.num_points / self.area()
