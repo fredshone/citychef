@@ -117,10 +117,10 @@ class RegularBlock:
 
     def build_block_net(self, idx, G):
 
-        ((minx, miny), (maxx, maxy)) = self.bbox
+        (minx, miny), (maxx, maxy) = self.bbox
         centre_x, centre_y = self.centre[0], self.centre[1]
-        offset_ns = (maxx - minx) / 4
-        offset_ew = (maxy - miny) / 4
+        offset_ew = (maxx - minx) / 4
+        offset_ns = (maxy - miny) / 4
 
         self.junctions = {
             "centre": (f"{idx}_centre", (centre_x, centre_y)),
