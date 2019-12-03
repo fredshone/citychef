@@ -122,6 +122,23 @@ class RegularBlock:
         offset_ew = (maxx - minx) / 4
         offset_ns = (maxy - miny) / 4
 
+        def time(d):
+            d += np.random.poisson(1)
+            if d > 5:  # freeway
+                speed = 130 / 360  # km/s
+                return d / speed
+            if d > 2:
+                speed = 100 / 360  # km/s
+                return d / speed
+            if d > 1:
+                speed = 60 / 360  # km/s
+                return d / speed
+            if d > .5:
+                speed = 40 / 360  # km/s
+                return d / speed
+            speed = 30 / 360  # km/s
+            return d / speed
+
         self.junctions = {
             "centre": (f"{idx}_centre", (centre_x, centre_y)),
             "north": (f"{idx}_north", (centre_x, centre_y + offset_ns)),
@@ -137,36 +154,46 @@ class RegularBlock:
             if n == "centre":
                 continue
             if n in ["north", "south"]:
-                G.add_edge(self.junctions["centre"][0], name, weight=offset_ns)
+                G.add_edge(self.junctions["centre"][0], name, weight=time(offset_ns))
+                G.add_edge(name, self.junctions["centre"][0], weight=time(offset_ns))
 
-            G.add_edge(self.junctions["centre"][0], name, weight=offset_ew)
+            G.add_edge(self.junctions["centre"][0], name, weight=time(offset_ew))
+            G.add_edge(name, self.junctions["centre"][0], weight=time(offset_ew))
 
         if self.parent:
 
             # need to connect
             if self.parent.children[self.Child.SW] == self:
                 # connect self north to parent west
-                G.add_edge(self.junctions["north"][0], self.parent.junctions["west"][0], weight=offset_ns)
+                G.add_edge(self.junctions["north"][0], self.parent.junctions["west"][0], weight=time(offset_ns))
+                G.add_edge(self.parent.junctions["west"][0], self.junctions["north"][0], weight=time(offset_ns))
                 # connect self east to parent south
-                G.add_edge(self.junctions["east"][0], self.parent.junctions["south"][0], weight=offset_ew)
+                G.add_edge(self.junctions["east"][0], self.parent.junctions["south"][0], weight=time(offset_ew))
+                G.add_edge(self.parent.junctions["south"][0], self.junctions["east"][0], weight=time(offset_ew))
 
             elif self.parent.children[self.Child.NW] == self:
                 # connect self south to parent west
-                G.add_edge(self.junctions["south"][0], self.parent.junctions["west"][0], weight=offset_ns)
+                G.add_edge(self.junctions["south"][0], self.parent.junctions["west"][0], weight=time(offset_ns))
+                G.add_edge(self.parent.junctions["west"][0], self.junctions["south"][0], weight=time(offset_ns))
                 # connect self east to parent north
-                G.add_edge(self.junctions["east"][0], self.parent.junctions["north"][0], weight=offset_ew)
+                G.add_edge(self.junctions["east"][0], self.parent.junctions["north"][0], weight=time(offset_ew))
+                G.add_edge(self.parent.junctions["north"][0], self.junctions["east"][0], weight=time(offset_ew))
 
             elif self.parent.children[self.Child.NE] == self:
                 # connect self south to parent east
-                G.add_edge(self.junctions["south"][0], self.parent.junctions["east"][0], weight=offset_ns)
+                G.add_edge(self.junctions["south"][0], self.parent.junctions["east"][0], weight=time(offset_ns))
+                G.add_edge(self.parent.junctions["east"][0], self.junctions["south"][0], weight=time(offset_ns))
                 # connect self west to parent north
-                G.add_edge(self.junctions["west"][0], self.parent.junctions["north"][0], weight=offset_ew)
+                G.add_edge(self.junctions["west"][0], self.parent.junctions["north"][0], weight=time(offset_ew))
+                G.add_edge(self.parent.junctions["north"][0], self.junctions["west"][0], weight=time(offset_ew))
 
             elif self.parent.children[self.Child.SE] == self:
                 # connect self north to parent east
-                G.add_edge(self.junctions["north"][0], self.parent.junctions["east"][0], weight=offset_ns)
+                G.add_edge(self.junctions["north"][0], self.parent.junctions["east"][0], weight=time(offset_ns))
+                G.add_edge(self.parent.junctions["east"][0], self.junctions["north"][0], weight=time(offset_ns))
                 # connect self west to parent south
-                G.add_edge(self.junctions["west"][0], self.parent.junctions["south"][0], weight=offset_ew)
+                G.add_edge(self.junctions["west"][0], self.parent.junctions["south"][0], weight=time(offset_ew))
+                G.add_edge(self.parent.junctions["south"][0], self.junctions["west"][0], weight=time(offset_ew))
 
     def get_neighbor_of_greater_or_equal_size(self, direction):
         if direction == self.Direction.N:
