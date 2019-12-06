@@ -37,11 +37,11 @@ class Centres:
 
 class Clusters:
 
-    def __init__(self, centres, size=100, sigma=1):
+    def __init__(self, centres, size=10000, sigma=1):
 
         self.parents = centres
 
-        numb_units = np.random.poisson(size, self.parents.len)
+        numb_units = np.random.poisson(size / centres.len, self.parents.len)
 
         ids = []
         for i, units in enumerate(numb_units):
