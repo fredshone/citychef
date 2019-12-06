@@ -24,7 +24,7 @@ class RegularBlock:
     def __init__(self, bbox, data, max_points, parent=None, depth=0):
 
         """
-        :param bbox: [[minx, miny], [maxx, maxy]]
+        :param bbox: [minx, miny, maxx, maxy]
         :param locs: [[index, x, y],]
         :param max_points: int
         """
