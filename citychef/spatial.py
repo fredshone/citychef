@@ -1,7 +1,67 @@
 import numpy as np
 import logging
+from shapely.geometry import Point
+from sklearn.neighbors import KDTree
+
 
 logging.basicConfig(level=logging.INFO)
+
+
+def collect_bbox(units):
+    locs = units[0].locs
+    minx, miny, maxx, maxy = min(locs[:,0]), min(locs[:,1]), max(locs[:,0]), max(locs[:,1])
+    for unit in units:
+        locs = unit.locs
+        pminx, pminy, pmaxx, pmaxy = min(locs[:,0]), min(locs[:,1]), max(locs[:,0]), max(locs[:,1])
+        if pminx < minx:
+            minx = pminx
+        if pminy < miny:
+            miny = pminy
+        if pmaxx > maxx:
+            maxx = pmaxx
+        if pmaxy > maxy:
+            maxy = pmaxy
+    return np.array([[minx,miny],[maxx,maxy]])
+
+
+def distance_index_nearest_node(features, objectives):
+    tree = KDTree(objectives)
+    dist, ind = tree.query(features.locs, dualtree=True, k=1)
+
+    return dist.reshape(1, -1)[0], ind.reshape(1, -1)[0]
+
+
+def minmax(array, axis=0):
+    if len(array.shape) > 1:
+        return (array - array.min(axis=axis)) / (array.max(axis=axis) - array.min(axis=axis))
+    else:
+        return (array - min(array)) / (max(array) - min(array))
+
+
+def density(features, objectives, r=1):
+    """
+    Count of objectives within a given radius r to points in features"""
+    if not isinstance(features, np.ndarray):
+        features = features.locs
+    if not isinstance(objectives, np.ndarray):
+        objectives = objectives.locs
+
+    tree = KDTree(objectives)
+    density = tree.query_radius(features, count_only=True, r=r)
+    return minmax(density)
+
+
+def distances_to_closest(features, objectives, num):
+    assert len(objectives.locs >= num)
+    tree = KDTree(objectives.locs)
+    dist_closest, _ = tree.query(features.locs, dualtree=True, k=num)
+
+    if num > 1:
+        dist_closest = dist_closest.sum(axis=1)
+    else:
+        dist_closest = dist_closest.reshape(-1)
+
+    return minmax(dist_closest)
 
 
 class Centres:
@@ -20,7 +80,7 @@ class Centres:
         self.locs[:, 1] = ymin + (ymax - ymin) * np.random.uniform(0, 1, self.num)
 
     @property
-    def len(self):
+    def size(self):
         return self.num
 
     @property
@@ -31,8 +91,13 @@ class Centres:
     def y(self):
         return self.locs[:, 1]
 
+    @property
+    def points(self):
+        for x, y in self.locs:
+            yield Point(x, y)
+
     def __repr__(self):
-        return f"{self.len} centres"
+        return f"{self.size} centres"
 
 
 class Clusters:
@@ -41,7 +106,7 @@ class Clusters:
 
         self.parents = centres
 
-        numb_units = np.random.poisson(size / centres.len, self.parents.len)
+        numb_units = np.random.poisson(size / centres.size, centres.size)
 
         ids = []
         for i, units in enumerate(numb_units):
@@ -68,9 +133,8 @@ class Clusters:
         maxy, miny = max(self.locs[:, 1]), min(self.locs[:, 1])
         self.bbox = np.array(((minx, miny), (maxx, maxy)))
 
-
     @property
-    def len(self):
+    def size(self):
         return self.count
 
     @property
@@ -97,8 +161,16 @@ class Clusters:
     def oy(self):
         return self.offsets[:, 1]
 
+    @property
+    def points(self):
+        for x, y in self.locs:
+            yield Point(x, y)
+
+    def dist_to_centres(self):
+        return np.sqrt(((self.locs - self.centres) ** 2).sum(axis=1))
+
     def __repr__(self):
-        return f"{self.len} units, {self.parents.len} centres"
+        return f"{self.size} units, {self.parents.size} centres"
 
 
 def rand_poisson_points(

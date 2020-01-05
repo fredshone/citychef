@@ -1,3 +1,5 @@
-# popsynth
-Code for the paper "Scalable Population Synthesis with Deep Generative Modeling" 
-https://arxiv.org/abs/1808.06910
+## City Chef
+
+Generate your own city. Part of a project to create data for training and testing population synthesis methods.
+
+![Example](city.png)

@@ -1,9 +1,35 @@
 import numpy as np
 from enum import Enum, IntEnum
 from shapely.geometry import Polygon
+import pandas as pd
+import geopandas as gpd
 
 
-class RegularBlock:
+def build_zones(grid):
+    geom_data = []
+    geom_maps = []
+    centroids = []
+    idx = 0
+
+    for block in grid.traverse():
+
+        if block.leaf:
+            geom_data.append({'block_id': idx, 'density': block.density(), 'geometry': block.district()})
+            geom_maps.append(block.build_point_data(idx))
+            centroids.append(block.centre)
+        idx += 1
+
+    hh_grid_ids = np.concatenate(geom_maps)
+    hh_grid_ids = hh_grid_ids[hh_grid_ids[:, 0].argsort()]
+    hh_grid_ids = hh_grid_ids[:, 1]
+
+    block_df = pd.DataFrame(geom_data)
+    block_gdf = gpd.GeoDataFrame(block_df, geometry='geometry')
+
+    return hh_grid_ids, block_gdf, np.array(centroids)
+
+
+class BaseBlock:
 
     class Child(IntEnum):
         SW = 0
@@ -35,24 +61,28 @@ class RegularBlock:
         self.parent = parent
         self.depth = depth
         self.num_points = len(data)
+
         self.bbox = bbox
-        self.centre = bbox.mean(axis=0)
+        self.centre = self.get_centre()
         self.data = data
 
         if self.num_points > max_points:
-            self.divide(bbox, self.centre, data, max_points)
+            self.divide(bbox, data, max_points)
         else:
             self.leaf = True
 
-    def divide(self, bbox, centre, data, max_points):
+    def get_centre(self):
+        raise NotImplemented
 
-        left = data[:, 1] < centre[0]
-        bottom = data[:, 2] < centre[1]
+    def divide(self, bbox, data, max_points):
+
+        left = data[:, 1] < self.centre[0]
+        bottom = data[:, 2] < self.centre[1]
 
         # bottom left
-        minx, miny, maxx, maxy = bbox[0, 0], bbox[0, 1], centre[0], centre[1]
+        minx, miny, maxx, maxy = bbox[0, 0], bbox[0, 1], self.centre[0], self.centre[1]
         self.children.append(
-            RegularBlock(
+            self.__class__(
                 bbox=np.array([[minx, miny], [maxx, maxy]]),
                 data=data[left & bottom],
                 max_points=max_points,
@@ -62,9 +92,9 @@ class RegularBlock:
         )
 
         # top left
-        minx, miny, maxx, maxy = bbox[0, 0], centre[1], centre[0], bbox[1, 1]
+        minx, miny, maxx, maxy = bbox[0, 0], self.centre[1], self.centre[0], bbox[1, 1]
         self.children.append(
-            RegularBlock(
+            self.__class__(
                 bbox=np.array([[minx, miny], [maxx, maxy]]),
                 data=data[left & ~bottom],
                 max_points=max_points,
@@ -74,9 +104,9 @@ class RegularBlock:
         )
 
         # top right
-        minx, miny, maxx, maxy = centre[0], centre[1], bbox[1, 0], bbox[1, 1]
+        minx, miny, maxx, maxy = self.centre[0], self.centre[1], bbox[1, 0], bbox[1, 1]
         self.children.append(
-            RegularBlock(
+            self.__class__(
                 bbox=np.array([[minx, miny], [maxx, maxy]]),
                 data=data[~left & ~bottom],
                 max_points=max_points,
@@ -86,9 +116,9 @@ class RegularBlock:
         )
 
         # bottom right
-        minx, miny, maxx, maxy = centre[0], bbox[0, 1], bbox[1, 0], centre[1]
+        minx, miny, maxx, maxy = self.centre[0], bbox[0, 1], bbox[1, 0], self.centre[1]
         self.children.append(
-            RegularBlock(
+            self.__class__(
                 bbox=np.array([[minx, miny], [maxx, maxy]]),
                 data=data[~left & bottom],
                 max_points=max_points,
@@ -119,81 +149,148 @@ class RegularBlock:
 
         (minx, miny), (maxx, maxy) = self.bbox
         centre_x, centre_y = self.centre[0], self.centre[1]
-        offset_ew = (maxx - minx) / 4
-        offset_ns = (maxy - miny) / 4
+        offset_n = (maxy - centre_y) / 2
+        offset_s = (centre_y - miny) / 2
+        offset_e = (maxx - centre_x) / 2
+        offset_w = (centre_x - minx) / 2
 
-        def time(d):
+        def length(d):
             d += np.random.poisson(1)
+            return d
+
+        def freespeed(d):
+
             if d > 5:  # freeway
-                speed = 130 / 360  # km/s
-                return d / speed
+                speed = 130 / 3600  # km/s
+                return speed
             if d > 2:
-                speed = 100 / 360  # km/s
-                return d / speed
+                speed = 100 / 3600  # km/s
+                return speed
             if d > 1:
-                speed = 60 / 360  # km/s
-                return d / speed
+                speed = 60 / 3600  # km/s
+                return speed
             if d > .5:
-                speed = 40 / 360  # km/s
-                return d / speed
-            speed = 30 / 360  # km/s
+                speed = 40 / 3600  # km/s
+                return speed
+            speed = 30 / 3600  # km/s
+            return speed
+
+        def time(d, speed):
             return d / speed
 
         self.junctions = {
-            "centre": (f"{idx}_centre", (centre_x, centre_y)),
-            "north": (f"{idx}_north", (centre_x, centre_y + offset_ns)),
-            "south": (f"{idx}_south", (centre_x, centre_y - offset_ns)),
-            "east": (f"{idx}_east", (centre_x + offset_ew, centre_y)),
-            "west": (f"{idx}_west", (centre_x - offset_ew, centre_y)),
+            "centre": (f"{idx}_centre", (centre_x, centre_y), 0),
+            "north": (f"{idx}_north", (centre_x, centre_y + offset_n), offset_n),
+            "south": (f"{idx}_south", (centre_x, centre_y - offset_s), offset_s),
+            "east": (f"{idx}_east", (centre_x + offset_e, centre_y), offset_e),
+            "west": (f"{idx}_west", (centre_x - offset_w, centre_y), offset_w),
         }
 
-        for n, (name, pos) in self.junctions.items():
+        for n, (name, pos, offset) in self.junctions.items():
 
             G.add_node(name, pos=pos)
 
             if n == "centre":
                 continue
-            if n in ["north", "south"]:
-                G.add_edge(self.junctions["centre"][0], name, weight=time(offset_ns))
-                G.add_edge(name, self.junctions["centre"][0], weight=time(offset_ns))
-
-            G.add_edge(self.junctions["centre"][0], name, weight=time(offset_ew))
-            G.add_edge(name, self.junctions["centre"][0], weight=time(offset_ew))
+            if n == "north":
+                d = length(offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s)
+            if n == "south":
+                d = length(offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s)
+            if n == "east":
+                d = length(offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s)
+            if n == "west":
+                d = length(offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s)
 
         if self.parent:
 
             # need to connect
             if self.parent.children[self.Child.SW] == self:
                 # connect self north to parent west
-                G.add_edge(self.junctions["north"][0], self.parent.junctions["west"][0], weight=time(offset_ns))
-                G.add_edge(self.parent.junctions["west"][0], self.junctions["north"][0], weight=time(offset_ns))
+                name, pos, offset = self.junctions['north']
+                p_name, p_pos, p_offset = self.parent.junctions['west']
+                d = length(offset + p_offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
                 # connect self east to parent south
-                G.add_edge(self.junctions["east"][0], self.parent.junctions["south"][0], weight=time(offset_ew))
-                G.add_edge(self.parent.junctions["south"][0], self.junctions["east"][0], weight=time(offset_ew))
+                name, pos, offset = self.junctions['east']
+                p_name, p_pos, p_offset = self.parent.junctions['south']
+                d = length(offset + p_offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
 
             elif self.parent.children[self.Child.NW] == self:
                 # connect self south to parent west
-                G.add_edge(self.junctions["south"][0], self.parent.junctions["west"][0], weight=time(offset_ns))
-                G.add_edge(self.parent.junctions["west"][0], self.junctions["south"][0], weight=time(offset_ns))
+                name, pos, offset = self.junctions['south']
+                p_name, p_pos, p_offset = self.parent.junctions['west']
+                d = length(offset + p_offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
                 # connect self east to parent north
-                G.add_edge(self.junctions["east"][0], self.parent.junctions["north"][0], weight=time(offset_ew))
-                G.add_edge(self.parent.junctions["north"][0], self.junctions["east"][0], weight=time(offset_ew))
+                name, pos, offset = self.junctions['east']
+                p_name, p_pos, p_offset = self.parent.junctions['north']
+                d = length(offset + p_offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
 
             elif self.parent.children[self.Child.NE] == self:
                 # connect self south to parent east
-                G.add_edge(self.junctions["south"][0], self.parent.junctions["east"][0], weight=time(offset_ns))
-                G.add_edge(self.parent.junctions["east"][0], self.junctions["south"][0], weight=time(offset_ns))
+                name, pos, offset = self.junctions['south']
+                p_name, p_pos, p_offset = self.parent.junctions['east']
+                d = length(offset + p_offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
                 # connect self west to parent north
-                G.add_edge(self.junctions["west"][0], self.parent.junctions["north"][0], weight=time(offset_ew))
-                G.add_edge(self.parent.junctions["north"][0], self.junctions["west"][0], weight=time(offset_ew))
+                name, pos, offset = self.junctions['west']
+                p_name, p_pos, p_offset = self.parent.junctions['north']
+                d = length(offset + p_offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
 
             elif self.parent.children[self.Child.SE] == self:
                 # connect self north to parent east
-                G.add_edge(self.junctions["north"][0], self.parent.junctions["east"][0], weight=time(offset_ns))
-                G.add_edge(self.parent.junctions["east"][0], self.junctions["north"][0], weight=time(offset_ns))
+                name, pos, offset = self.junctions['north']
+                p_name, p_pos, p_offset = self.parent.junctions['east']
+                d = length(offset + p_offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
                 # connect self west to parent south
-                G.add_edge(self.junctions["west"][0], self.parent.junctions["south"][0], weight=time(offset_ew))
-                G.add_edge(self.parent.junctions["south"][0], self.junctions["west"][0], weight=time(offset_ew))
+                name, pos, offset = self.junctions['west']
+                p_name, p_pos, p_offset = self.parent.junctions['south']
+                d = length(offset + p_offset)
+                s = freespeed(d)
+                t = time(d, s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
 
     def get_neighbor_of_greater_or_equal_size(self, direction):
         if direction == self.Direction.N:
@@ -342,3 +439,17 @@ class RegularBlock:
 
     def density(self):
         return self.num_points / self.area()
+
+
+class RegularBlock(BaseBlock):
+
+    def get_centre(self):
+        return self.bbox.mean(axis=0)
+
+
+class IrregularBlock(BaseBlock):
+
+    def get_centre(self):
+        skew = np.random.choice([.45, .5, .55])
+        diff = self.bbox[0] - self.bbox[1]
+        return self.bbox[1] + diff * skew
