@@ -3,30 +3,7 @@ from enum import Enum, IntEnum
 from shapely.geometry import Polygon
 import pandas as pd
 import geopandas as gpd
-
-
-def build_zones(grid):
-    geom_data = []
-    geom_maps = []
-    centroids = []
-    idx = 0
-
-    for block in grid.traverse():
-
-        if block.leaf:
-            geom_data.append({'block_id': idx, 'density': block.density(), 'geometry': block.district()})
-            geom_maps.append(block.build_point_data(idx))
-            centroids.append(block.centre)
-        idx += 1
-
-    hh_grid_ids = np.concatenate(geom_maps)
-    hh_grid_ids = hh_grid_ids[hh_grid_ids[:, 0].argsort()]
-    hh_grid_ids = hh_grid_ids[:, 1]
-
-    block_df = pd.DataFrame(geom_data)
-    block_gdf = gpd.GeoDataFrame(block_df, geometry='geometry')
-
-    return hh_grid_ids, block_gdf, np.array(centroids)
+from collections import defaultdict
 
 
 class BaseBlock:
@@ -453,3 +430,83 @@ class IrregularBlock(BaseBlock):
         skew = np.random.choice([.45, .5, .55])
         diff = self.bbox[0] - self.bbox[1]
         return self.bbox[1] + diff * skew
+
+
+def build_zones(bbox=None, data=None, area_target=None, zone_target=None, grid=IrregularBlock):
+
+    zones_tree = grid(bbox=bbox, data=data, max_points=area_target)
+
+    zone_gdf = []
+    zones = []
+    zone_centroids = []
+
+    zones_map = defaultdict(list)
+
+    sub_zone_gdf = []
+    sub_zones = []
+    sub_zone_centroids = []
+
+    zid = 0
+
+    for zone in zones_tree.traverse():
+
+        if zone.leaf:
+
+            zone_gdf.append(
+                {'area_id': zid, 'density': zone.density(), 'geometry': zone.district()}
+            )
+            zones.append(zone.build_point_data(zid))
+            zone_centroids.append(zone.centre)
+
+            if zone_target:
+
+                sub_zones_tree = grid(bbox=zone.bbox, data=zone.data, max_points=zone_target)
+
+                id = 0
+
+                for sub_zone in sub_zones_tree.traverse():
+
+                    szid = float(f"{zid}.{id}")
+
+                    if sub_zone.leaf:
+
+                        zones_map[zid].append(szid)
+                        sub_zone_gdf.append(
+                            {'zone_id': szid,
+                             'area_id': zid,
+                             'density': sub_zone.density(),
+                             'geometry': sub_zone.district()}
+                        )
+                        sub_zones.append(sub_zone.build_point_data(szid))
+                        sub_zone_centroids.append(zone.centre)
+
+                        id += 1
+
+            zid += 1
+
+    hh_zone_ids = np.concatenate(zones)
+    hh_zone_ids = hh_zone_ids[hh_zone_ids[:, 0].argsort()]
+    hh_zone_ids = hh_zone_ids[:, 1]
+
+    zone_gdf = pd.DataFrame(zone_gdf)
+    zone_gdf = gpd.GeoDataFrame(zone_gdf, geometry='geometry')
+
+    zone_centroids = np.array(zone_centroids)
+
+    if zone_target:
+
+        hh_sub_zone_ids = np.concatenate(sub_zones)
+        hh_sub_zone_ids = hh_sub_zone_ids[hh_sub_zone_ids[:, 0].argsort()]
+        hh_sub_zone_ids = hh_sub_zone_ids[:, 1]
+
+        sub_zone_gdf = pd.DataFrame(sub_zone_gdf)
+        sub_zone_gdf = gpd.GeoDataFrame(sub_zone_gdf, geometry='geometry')
+
+        sub_zone_centroids = np.array(sub_zone_centroids)
+
+    else:
+        hh_sub_zone_ids, sub_zone_gdf, sub_zone_centroids = None, None, None
+
+    return hh_zone_ids, zone_gdf, zone_centroids, \
+           hh_sub_zone_ids, sub_zone_gdf, sub_zone_centroids, \
+            zones_map

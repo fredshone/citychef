@@ -148,13 +148,14 @@ class PTRoute:
 
         self.g = nx.DiGraph()
         self.g_return = nx.DiGraph()
+
         self.tail = None
         self.centroid = None
         self.stops = 1
         self.population = 0
         self.length = 0
 
-        self.weighted_random_init(node_weights)
+        self.start_node = self.weighted_random_init(node_weights)
         while self.stepping():
             self.stops += 1
 
@@ -166,6 +167,8 @@ class PTRoute:
         self.g.add_node(n, pos=pos)
         self.tail = n
         self.update_centroid()
+
+        return n
 
     def update_centroid(self):
         self.centroid = np.array([d.get('pos') for n, d in self.g.nodes.data()]).mean(axis=0)
