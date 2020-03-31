@@ -2,78 +2,27 @@ import numpy as np
 import logging
 from shapely.geometry import Point
 from sklearn.neighbors import KDTree
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 
 logging.basicConfig(level=logging.INFO)
 
 
-def collect_bbox(units):
-    locs = units[0].locs
-    minx, miny, maxx, maxy = min(locs[:,0]), min(locs[:,1]), max(locs[:,0]), max(locs[:,1])
-    for unit in units:
-        locs = unit.locs
-        pminx, pminy, pmaxx, pmaxy = min(locs[:,0]), min(locs[:,1]), max(locs[:,0]), max(locs[:,1])
-        if pminx < minx:
-            minx = pminx
-        if pminy < miny:
-            miny = pminy
-        if pmaxx > maxx:
-            maxx = pmaxx
-        if pmaxy > maxy:
-            maxy = pmaxy
-    return np.array([[minx,miny],[maxx,maxy]])
-
-
-def distance_index_nearest_node(features, objectives):
-    tree = KDTree(objectives)
-    dist, ind = tree.query(features.locs, dualtree=True, k=1)
-
-    return dist.reshape(1, -1)[0], ind.reshape(1, -1)[0]
-
-
-def minmax(array, axis=0):
-    if len(array.shape) > 1:
-        return (array - array.min(axis=axis)) / (array.max(axis=axis) - array.min(axis=axis))
-    else:
-        return (array - min(array)) / (max(array) - min(array))
-
-
-def density(features, objectives, r=1):
-    """
-    Count of objectives within a given radius r to points in features"""
-    if not isinstance(features, np.ndarray):
-        features = features.locs
-    if not isinstance(objectives, np.ndarray):
-        objectives = objectives.locs
-
-    tree = KDTree(objectives)
-    density = tree.query_radius(features, count_only=True, r=r)
-    return minmax(density)
-
-
-def distances_to_closest(features, objectives, num):
-    assert len(objectives.locs >= num)
-    tree = KDTree(objectives.locs)
-    dist_closest, _ = tree.query(features.locs, dualtree=True, k=num)
-
-    if num > 1:
-        dist_closest = dist_closest.sum(axis=1)
-    else:
-        dist_closest = dist_closest.reshape(-1)
-
-    return minmax(dist_closest)
-
-
 class Centres:
 
-    def __init__(self, bbox, density=1):
+    def __init__(self, bbox, density=1, number=None):
         """
         :param bbox: np.array of xmin, ymin, xmax, ymax
         :param density: target points per unit area
         """
         (xmin, ymin), (xmax, ymax) = bbox
         area = (xmax - xmin) * (ymax - ymin)  # area of extended rectangle
-        self.num = np.random.poisson(area * density)  # Poisson number of points
+
+        if number is None:
+            self.num = np.random.poisson(area * density)  # Poisson number of points
+        else:
+            self.num = number
 
         self.locs = np.zeros((self.num, 2))
         self.locs[:, 0] = xmin + (xmax - xmin) * np.random.uniform(0, 1, self.num)
@@ -96,7 +45,17 @@ class Centres:
         for x, y in self.locs:
             yield Point(x, y)
 
+    def plot(self, ax=None):
+        if ax is None:
+            fig = plt.figure(figsize=(6, 6))
+            ax = fig.add_subplot(111)
+            plt.xlabel("x")
+            plt.ylabel("y")
+            plt.axis('equal')
+        ax.scatter(self.locs[:, 0], self.locs[:, 1], alpha=1, marker='x', s=100, c='black')
+
     def __repr__(self):
+        self.plot()
         return f"{self.size} centres"
 
 
@@ -173,6 +132,33 @@ class Clusters:
         return f"{self.size} units, {self.parents.size} centres"
 
 
+def plot_facilities(facilities, centres=None, ax=None, alpha=.4, s=10):
+
+    if ax is None:
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111)
+        plt.xlabel("x")
+        plt.ylabel("y")
+        plt.axis('equal')
+
+    def yield_cols():
+        cols = ['blue', 'red', 'green', 'orange', 'yellow', 'brown', 'purple', 'grey']
+        while True:
+            for c in cols:
+                yield c
+
+    colour = yield_cols()
+    handles = []
+    for name, facility in facilities.items():
+        c = next(colour)
+        ax.scatter(facility.x, facility.y, alpha=alpha, s=s, marker='.', c=c)
+        handles.append(mpatches.Patch(color=c, label=name))
+    ax.legend(title='Facilities:', handles=handles)
+
+    if centres:
+        centres.plot(ax=ax)
+
+
 def rand_poisson_points(
         xmin=0,
         xmax=1,
@@ -191,6 +177,32 @@ def rand_poisson_points(
     # x and y coordinates of Poisson points for the parent
     xx = xmin + xdelta * np.random.uniform(0, 1, numb_points)
     yy = ymin + ydelta * np.random.uniform(0, 1, numb_points)
+
+    return xx, yy
+
+
+def rand_poisson_points_normal(
+        xmin=0,
+        xmax=1,
+        ymin=0,
+        ymax=1,
+        density=1,
+        sigma=None
+):
+    logging.debug('Starting random poisson point process')
+    # rectangle dimensions
+    xdelta = xmax - xmin
+    ydelta = ymax - ymin
+    areatotal = xdelta * ydelta  # area of extended rectangle
+
+    if sigma is None:
+        sigma = (xmax - xmin) * .5 / density
+
+    logging.debug('Simulate Poisson point process')
+    numb_points = np.random.poisson(areatotal * density)  # Poisson number of points
+    # x and y coordinates of Poisson points for the parent
+    xx = xmin + xdelta * np.random.normal(0.5, sigma, numb_points)
+    yy = ymin + ydelta * np.random.normal(0.5, sigma, numb_points)
 
     return xx, yy
 
@@ -237,3 +249,60 @@ def thomas_cluster_process(
     yy = yy_parent_repeated + yy0
 
     return xx, yy, xx_parent_repeated, yy_parent_repeated, xx_parent, yy_parent, np.array(centre_ids)
+
+
+def collect_bbox(units):
+    locs = units[list(units)[0]].locs
+    minx, miny, maxx, maxy = min(locs[:,0]), min(locs[:,1]), max(locs[:,0]), max(locs[:,1])
+    for unit in units.values():
+        locs = unit.locs
+        pminx, pminy, pmaxx, pmaxy = min(locs[:,0]), min(locs[:,1]), max(locs[:,0]), max(locs[:,1])
+        if pminx < minx:
+            minx = pminx
+        if pminy < miny:
+            miny = pminy
+        if pmaxx > maxx:
+            maxx = pmaxx
+        if pmaxy > maxy:
+            maxy = pmaxy
+    return np.array([[minx,miny],[maxx,maxy]])
+
+
+def distance_index_nearest_node(features, objectives):
+    tree = KDTree(objectives)
+    dist, ind = tree.query(features.locs, dualtree=True, k=1)
+
+    return dist.reshape(1, -1)[0], ind.reshape(1, -1)[0]
+
+
+def minmax(array, axis=0):
+    if len(array.shape) > 1:
+        return (array - array.min(axis=axis)) / (array.max(axis=axis) - array.min(axis=axis))
+    else:
+        return (array - min(array)) / (max(array) - min(array))
+
+
+def density(features, objectives, density_radius=1):
+    """
+    Count of objectives within a given radius r to points in features"""
+    if not isinstance(features, np.ndarray):
+        features = features.locs
+    if not isinstance(objectives, np.ndarray):
+        objectives = objectives.locs
+
+    tree = KDTree(objectives)
+    density = tree.query_radius(features, count_only=True, r=density_radius)
+    return minmax(density)
+
+
+def distances_to_closest(features, objectives, num):
+    assert len(objectives.locs >= num)
+    tree = KDTree(objectives.locs)
+    dist_closest, _ = tree.query(features.locs, dualtree=True, k=num)
+
+    if num > 1:
+        dist_closest = dist_closest.sum(axis=1)
+    else:
+        dist_closest = dist_closest.reshape(-1)
+
+    return minmax(dist_closest)

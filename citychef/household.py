@@ -1,6 +1,13 @@
 import numpy as np
 
 
+def minmax(array, axis=0):
+    if len(array.shape) > 1:
+        return (array - array.min(axis=axis)) / (array.max(axis=axis) - array.min(axis=axis))
+    else:
+        return (array - min(array)) / (max(array) - min(array))
+
+
 def vectorize(func):
     return np.vectorize(func)
 

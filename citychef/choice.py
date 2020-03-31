@@ -24,7 +24,7 @@ def main_activity_choice(
     3: shopping
     4: leisure
     5: health
-    :return:
+    :return:graph
     """
     if employment in [0, 1]:  # retired or unemployed
         p0 = 3

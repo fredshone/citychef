@@ -4,6 +4,7 @@ from shapely.geometry import Polygon
 import pandas as pd
 import geopandas as gpd
 from collections import defaultdict
+from matplotlib import pyplot as plt
 
 
 class BaseBlock:
@@ -24,7 +25,7 @@ class BaseBlock:
         W = 6
         E = 7
 
-    def __init__(self, bbox, data, max_points, parent=None, depth=0):
+    def __init__(self, bbox, data, max_points, parent=None, depth=0, random_length=None):
 
         """
         :param bbox: [minx, miny, maxx, maxy]
@@ -37,6 +38,7 @@ class BaseBlock:
         self.junctions = None
         self.parent = parent
         self.depth = depth
+        self.random_length = random_length
         self.num_points = len(data)
 
         self.bbox = bbox
@@ -131,9 +133,13 @@ class BaseBlock:
         offset_e = (maxx - centre_x) / 2
         offset_w = (centre_x - minx) / 2
 
-        def length(d):
-            d += np.random.poisson(1)
-            return d
+        if self.random_length is not None:
+            def length(d):
+                d += np.random.poisson(self.random_length)
+                return d
+        else:
+            def length(d):
+                return d
 
         def freespeed(d):
 
@@ -432,81 +438,126 @@ class IrregularBlock(BaseBlock):
         return self.bbox[1] + diff * skew
 
 
-def build_zones(bbox=None, data=None, area_target=None, zone_target=None, grid=IrregularBlock):
+class Zones:
 
-    zones_tree = grid(bbox=bbox, data=data, max_points=area_target)
+    def __init__(
+            self,
+            bbox=None,
+            facilities=None,
+            max_zone_facilities=None,
+            max_sub_zone_facilities=None,
+            grid=IrregularBlock,
+    ):
 
-    zone_gdf = []
-    zones = []
-    zone_centroids = []
+        # add index to locs so we can keep track of them
+        data = np.zeros((facilities.size, 3))
+        data[:, 0] = range(facilities.size)
+        data[:, 1:] = facilities.locs
 
-    zones_map = defaultdict(list)
+        zones_tree = grid(bbox=bbox, data=data, max_points=max_zone_facilities)
 
-    sub_zone_gdf = []
-    sub_zones = []
-    sub_zone_centroids = []
+        self.zone_gdf = []
+        zones = []
+        self.zone_centroids = []
 
-    zid = 0
+        self.zones_map = defaultdict(list)
 
-    for zone in zones_tree.traverse():
+        self.sub_zone_gdf = []
+        sub_zones = []
+        self.sub_zone_centroids = []
 
-        if zone.leaf:
+        zid = 0
 
-            zone_gdf.append(
-                {'area_id': zid, 'density': zone.density(), 'geometry': zone.district()}
+        for zone in zones_tree.traverse():
+
+            if zone.leaf:
+
+                self.zone_gdf.append(
+                    {'area_id': zid, 'density': zone.density(), 'geometry': zone.district()}
+                )
+                zones.append(zone.build_point_data(zid))
+                self.zone_centroids.append(zone.centre)
+
+                if max_sub_zone_facilities:
+
+                    sub_zones_tree = grid(bbox=zone.bbox, data=zone.data, max_points=max_sub_zone_facilities)
+
+                    id = 0
+
+                    for sub_zone in sub_zones_tree.traverse():
+
+                        szid = float(f"{zid}.{id}")
+
+                        if sub_zone.leaf:
+                            self.zones_map[zid].append(szid)
+                            self.sub_zone_gdf.append(
+                                {'zone_id': szid,
+                                 'area_id': zid,
+                                 'density': sub_zone.density(),
+                                 'geometry': sub_zone.district()}
+                            )
+                            sub_zones.append(sub_zone.build_point_data(szid))
+                            self.sub_zone_centroids.append(zone.centre)
+
+                            id += 1
+
+                zid += 1
+
+        self.facility_zone_ids = np.concatenate(zones)
+        self.facility_zone_ids = self.facility_zone_ids[self.facility_zone_ids[:, 0].argsort()]
+        self.facility_zone_ids = self.facility_zone_ids[:, 1]
+
+        self.zone_gdf = pd.DataFrame(self.zone_gdf)
+        self.zone_gdf = gpd.GeoDataFrame(self.zone_gdf, geometry='geometry')
+
+        self.zone_centroids = np.array(self.zone_centroids)
+
+        if max_sub_zone_facilities:
+
+            self.facility_sub_zone_ids = np.concatenate(sub_zones)
+            self.facility_sub_zone_ids = self.facility_sub_zone_ids[self.facility_sub_zone_ids[:, 0].argsort()]
+            self.facility_sub_zone_ids = self.facility_sub_zone_ids[:, 1]
+
+            self.c = pd.DataFrame(self.sub_zone_gdf)
+            self.sub_zone_gdf = gpd.GeoDataFrame(self.sub_zone_gdf, geometry='geometry')
+
+            self.sub_zone_centroids = np.array(self.sub_zone_centroids)
+
+        else:
+            self.facility_sub_zone_ids, self.sub_zone_gdf, self.sub_zone_centroids = None, None, None
+
+    def plot(self, ax=None):
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(12, 9))
+            ax.axis('equal')
+            fig.patch.set_visible(False)
+            ax.axis('off')
+
+        if self.sub_zone_gdf is not None:
+            self.sub_zone_gdf.plot(
+                column='density',
+                ax=ax,
+                legend=True,
+                legend_kwds={
+                    'label': "Density",
+                    'orientation': "vertical",
+                }
             )
-            zones.append(zone.build_point_data(zid))
-            zone_centroids.append(zone.centre)
+            self.sub_zone_gdf.geometry.boundary.plot(
+                color=None, edgecolor='white', linewidth=.5, ax=ax
+            )
+        else:
+            self.zone_gdf.plot(
+                column='density',
+                ax=ax,
+                legend=True,
+                legend_kwds={
+                    'label': "Density",
+                    'orientation': "vertical",
+                }
+            )
 
-            if zone_target:
+        self.zone_gdf.geometry.boundary.plot(color=None, edgecolor='white', linewidth=3, ax=ax)
 
-                sub_zones_tree = grid(bbox=zone.bbox, data=zone.data, max_points=zone_target)
 
-                id = 0
 
-                for sub_zone in sub_zones_tree.traverse():
-
-                    szid = float(f"{zid}.{id}")
-
-                    if sub_zone.leaf:
-
-                        zones_map[zid].append(szid)
-                        sub_zone_gdf.append(
-                            {'zone_id': szid,
-                             'area_id': zid,
-                             'density': sub_zone.density(),
-                             'geometry': sub_zone.district()}
-                        )
-                        sub_zones.append(sub_zone.build_point_data(szid))
-                        sub_zone_centroids.append(zone.centre)
-
-                        id += 1
-
-            zid += 1
-
-    hh_zone_ids = np.concatenate(zones)
-    hh_zone_ids = hh_zone_ids[hh_zone_ids[:, 0].argsort()]
-    hh_zone_ids = hh_zone_ids[:, 1]
-
-    zone_gdf = pd.DataFrame(zone_gdf)
-    zone_gdf = gpd.GeoDataFrame(zone_gdf, geometry='geometry')
-
-    zone_centroids = np.array(zone_centroids)
-
-    if zone_target:
-
-        hh_sub_zone_ids = np.concatenate(sub_zones)
-        hh_sub_zone_ids = hh_sub_zone_ids[hh_sub_zone_ids[:, 0].argsort()]
-        hh_sub_zone_ids = hh_sub_zone_ids[:, 1]
-
-        sub_zone_gdf = pd.DataFrame(sub_zone_gdf)
-        sub_zone_gdf = gpd.GeoDataFrame(sub_zone_gdf, geometry='geometry')
-
-        sub_zone_centroids = np.array(sub_zone_centroids)
-
-    else:
-        hh_sub_zone_ids, sub_zone_gdf, sub_zone_centroids = None, None, None
-
-    return hh_zone_ids, zone_gdf, zone_centroids, \
-           hh_sub_zone_ids, sub_zone_gdf, sub_zone_centroids, \
-            zones_map
