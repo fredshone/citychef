@@ -29,7 +29,16 @@ is not available. We also use City Chef for making small data for tests or toy e
 where we'd rather not use full city scale data. Included in this project are two such example 
 applications:
 
-**1. [Census & Travel Survey Generator](https://github.com/fredshone/citychef/blob/master/census-and-travel-survey-generation.ipynb)**
+**1. [OSM & GTFS Generator](https://github.com/fredshone/citychef/blob/master/osm-and-gtfs-generation.ipynb)**
+
+Build a city with a road network and generate bus routes. Apply spatial noise to the networks. 
+Output the road network to OSM format. Output the bus routes to GTFS.
+
+We use this generator for making test case data for our big network combining tools.
+
+![Example](https://github.com/fredshone/citychef/blob/master/images/test.png)
+
+**2. [Census & Travel Survey Generator](https://github.com/fredshone/citychef/blob/master/census-and-travel-survey-generation.ipynb)**
 
 Build a full city with facilities, statistical areas, road and transit networks. Use this city to 
 generate households of persons with complex underlying distributions of attributes. Output 
@@ -39,15 +48,6 @@ statistics. Output commuter OD matrix.
 We use this generator for population synthesis experiments.
 
 ![Example](https://github.com/fredshone/citychef/blob/master/images/city.png)
-
-**2. [Census & Travel Survey Generator](https://github.com/fredshone/citychef/blob/master/osm-and-gtfs-generation.ipynb)**
-
-Build a city with a road network and generate bus routes. Apply spatial noise to the networks. 
-Output the road network to OSM format. Output the bus routes to GTFS.
-
-We use this generator for making test case data for our big network combining tools.
-
-![Example](https://github.com/fredshone/citychef/blob/master/images/test.png)
 
 ### Installation
 
