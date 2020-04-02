@@ -67,8 +67,8 @@ def nx_to_osm(g, path):
                 osm,
                 'node',
                 {
-                    'id': node,
-                    'uid': node,
+                    'id': str(node),
+                    'uid': str(node),
                     'lat': str(data['pos'][1]),
                     'lon': str(data['pos'][0]),
                     'version': "6",
@@ -80,7 +80,7 @@ def nx_to_osm(g, path):
         spinner.text = 'added all nodes'
 
         for idx, (u, v) in enumerate(g.edges()):
-            index = f"00{idx}00"
+            index = f"00{idx}"
             way_element = et.SubElement(
                 osm,
                 'way',
@@ -99,14 +99,14 @@ def nx_to_osm(g, path):
                 way_element,
                 'nd',
                 {
-                    'ref': u,
+                    'ref': str(u),
                 }
             )
             nd_element = et.SubElement(
                 way_element,
                 'nd',
                 {
-                    'ref': v,
+                    'ref': str(v),
                 }
             )
             tag_element = et.SubElement(

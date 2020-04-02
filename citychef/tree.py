@@ -162,11 +162,11 @@ class BaseBlock:
             return d / speed
 
         self.junctions = {
-            "centre": (f"{idx}_centre", (centre_x, centre_y), 0),
-            "north": (f"{idx}_north", (centre_x, centre_y + offset_n), offset_n),
-            "south": (f"{idx}_south", (centre_x, centre_y - offset_s), offset_s),
-            "east": (f"{idx}_east", (centre_x + offset_e, centre_y), offset_e),
-            "west": (f"{idx}_west", (centre_x - offset_w, centre_y), offset_w),
+            "centre": (f"00{idx}", (centre_x, centre_y), 0),
+            "north": (f"11{idx}", (centre_x, centre_y + offset_n), offset_n),
+            "south": (f"22{idx}", (centre_x, centre_y - offset_s), offset_s),
+            "east": (f"33{idx}", (centre_x + offset_e, centre_y), offset_e),
+            "west": (f"44{idx}", (centre_x - offset_w, centre_y), offset_w),
         }
 
         for n, (name, pos, offset) in self.junctions.items():
