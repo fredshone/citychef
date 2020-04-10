@@ -1,2 +1,0 @@
-agency_id,agency_name,agency_url,agency_timezone,agency_phone,agency_lang
-0,test_bus_inc,NA,NA,NA,NA
