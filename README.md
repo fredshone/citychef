@@ -3,11 +3,20 @@
 *Welcome to City Chef, here you can build your own city.*
 
 City Chef is a collection of methodologies for essentially just randomly generating data, 
-but where the data generating process (DGP) is like (within reason) a real realistic city. The 
-code is intended for use in an interactive (ipython) environment. Data can
- be generated for all sorts of city features:
+but where the data generating process (DGP) produces outputs, with distributions a 
+real city. The code is intended for use in an interactive (ipython) environment.
 
-**Facilities** (activity locations, such as households, workplaces and hospitals)
+The original motivation behind this project was to provide some synthetic data for this cool 
+[project](https://github.com/stasmix/popsynth) and [paper](https://arxiv.org/abs/1808.06910). 
+
+Check out my [article](https://medium.com/arupcitymodelling/def-city-chef-a72326cceddb) for a 
+detailed walk through the project. 
+
+### Features
+
+City Chef can synthesis cities with the following features:
+
+**Facilities** - activity locations, such as households, workplaces and hospitals
 
 **Road Networks**
 
@@ -15,11 +24,11 @@ code is intended for use in an interactive (ipython) environment. Data can
 
 **Rail Transit Network and Routes**
 
-**Zones** statistical zones based on the city density
+**Zones** - statistical zones based on the city density
 
-**Population** (agents, with consistent household attributes)
+**Population** - agents, with consistent household attributes
 
-**Activity Plans** (simple activity based plans for each agent)
+**Activity Plans** - simple activity based plans for each agent
 
 ### Motivation
 
