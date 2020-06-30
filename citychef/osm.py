@@ -1,9 +1,19 @@
-from halo import HaloNotebook as Halo
 from lxml import etree as et
 import os
 import pandas as pd
 import gzip
+import halo
 
+def Halo(*args, **kw):
+    ipython = False
+    try:
+        get_ipython()
+        ipython = True
+    except NameError:
+        pass
+    if ipython:
+        return halo.HaloNotebook(*args, **kw)
+    return halo.Halo(*args, **kw)
 
 def is_xml(location):
     return location.lower().endswith(".xml")
@@ -14,7 +24,7 @@ def is_gzip(location):
 
 
 def create_local_dir(directory):
-    if not os.path.exists(directory):
+    if directory != "" and not os.path.exists(directory):
         print('Creating {}'.format(directory))
         os.makedirs(directory)
 
@@ -31,6 +41,7 @@ def xml_content(content):
     xml_version = b'<?xml version="1.0" encoding="UTF-8"?>'
     tree = xml_tree(content)
     return xml_version + tree
+
 
 
 def write_content(content, location, **kwargs):
