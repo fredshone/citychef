@@ -1,0 +1,17 @@
+{
+"type": "FeatureCollection",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "id": "000", "distance": 311.93468412343645, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -3.94755554602857, 56.935784638095008 ], [ -3.952678497737292, 56.935704712201129 ] ] } },
+{ "type": "Feature", "properties": { "id": "001", "distance": 662.59622039241344, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -3.952678497737292, 56.935704712201129 ], [ -3.960142527184184, 56.93138506736387 ] ] } },
+{ "type": "Feature", "properties": { "id": "002", "distance": 986.3891518965919, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -3.960142527184184, 56.93138506736387 ], [ -3.975361362672052, 56.928343574275139 ] ] } },
+{ "type": "Feature", "properties": { "id": "003", "distance": 1249.7387364939204, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -3.975361362672052, 56.928343574275139 ], [ -3.99584858710527, 56.928018083437763 ] ] } },
+{ "type": "Feature", "properties": { "id": "004", "distance": 988.10965824117659, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -3.99584858710527, 56.928018083437763 ], [ -3.991174395518298, 56.936498342288814 ] ] } },
+{ "type": "Feature", "properties": { "id": "005", "distance": 443.06414692830305, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -3.991174395518298, 56.936498342288814 ], [ -3.996446939373698, 56.939216141110812 ] ] } },
+{ "type": "Feature", "properties": { "id": "006", "distance": 220.53207346415152, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -3.996446939373698, 56.939216141110812 ], [ -3.999083498791872, 56.940574954761658 ] ] } },
+{ "type": "Feature", "properties": { "id": "007", "distance": 314.82420455501415, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -3.999083498791872, 56.940574954761658 ], [ -3.999233360089659, 56.943374460279287 ] ] } },
+{ "type": "Feature", "properties": { "id": "008", "distance": 493.05482912058829, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -3.999233360089659, 56.943374460279287 ], [ -4.002020410413693, 56.94753271051362 ] ] } },
+{ "type": "Feature", "properties": { "id": "009", "distance": 493.05482912056988, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -4.002020410413693, 56.94753271051362 ], [ -4.004357192687465, 56.943292410500312 ] ] } },
+{ "type": "Feature", "properties": { "id": "0010", "distance": 2344.8765176567963, "freespeed": 100, "label": "rail" }, "geometry": { "type": "LineString", "coordinates": [ [ -4.004357192687465, 56.943292410500312 ], [ -4.002921546687373, 56.964329671944547 ] ] } }
+]
+}

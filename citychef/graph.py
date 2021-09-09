@@ -1,5 +1,7 @@
 import networkx as nx
 import numpy as np
+import geopandas as gp
+from shapely.geometry import LineString
 from scipy.spatial import Delaunay
 import itertools
 from matplotlib import pyplot as plt
@@ -10,11 +12,12 @@ from . import spatial
 
 class TreeNetwork:
 
-    def __init__(self, bbox, facility, grid='regular', max_points=500):
+    def __init__(self, bbox, facility, grid='regular', max_points=500, label="highway"):
         self.bbox = bbox
         self.facility = facility
         self.grid_type = grid
         self.max_points = max_points
+        self.label = label
 
         grid = self.build_grid_network()
 
@@ -39,11 +42,11 @@ class TreeNetwork:
 
         if self.grid_type == 'regular':
             return RegularBlock(
-                bbox=self.bbox, data=data, max_points=self.max_points, random_length=random_length
+                bbox=self.bbox, data=data, max_points=self.max_points, random_length=random_length, label=self.label
             )
         elif self.grid_type == 'irregular':
             return IrregularBlock(
-                bbox=self.bbox, data=data, max_points=self.max_points, random_length=random_length
+                bbox=self.bbox, data=data, max_points=self.max_points, random_length=random_length, label=self.label
             )
         else:
             raise UserWarning('Grid type must be either "regular" or "irregular".')
@@ -87,7 +90,7 @@ class TreeNetwork:
 
 class DelaunayNetwork:
 
-    def __init__(self, locs):
+    def __init__(self, locs, label=("railway", "rail")):
         self.locs = locs
         tri = Delaunay(locs)
         self.g = nx.DiGraph()
@@ -101,8 +104,8 @@ class DelaunayNetwork:
                 s = self.freespeed(d)
                 t = self.time(d, s)
 
-                self.g.add_edge(i, j, weight=t, distance=d, freespeed=s)
-                self.g.add_edge(j, i, weight=t, distance=d, freespeed=s)
+                self.g.add_edge(i, j, weight=t, distance=d, freespeed=s, label=label)
+                self.g.add_edge(j, i, weight=t, distance=d, freespeed=s, label=label)
 
         self.pos = {k: v['pos'] for k, v in self.g.nodes.items()}
         self.node_lookup = {i: name for i, name in enumerate(self.pos.keys())}
@@ -114,14 +117,14 @@ class DelaunayNetwork:
         return d
 
     @staticmethod
-    def freespeed(d):
+    def freespeed(d):  # km/s
         if d < 1:
-            return 50 / 3600
-        return 100 / 3600  # km/s
+            return 50
+        return 100
 
     @staticmethod
-    def time(d, speed):
-        return d / speed
+    def time(d, speed):  # seconds
+        return ((d/1000) / speed) * 3600
 
     def plot(self, ax=None):
         if ax is None:
@@ -150,7 +153,7 @@ def distance(p1, p2):
 
 class Transit:
 
-    def __init__(self, network, facilities, density_radius=1):
+    def __init__(self, network, facilities, density_radius=1000):
 
         self.routes = []
         self.num_routes = None
@@ -161,7 +164,7 @@ class Transit:
 
         self.density = spatial.density(network.locs, facilities, density_radius=density_radius)
 
-    def build_routes(self, num_routes=None, max_length=30, min_length=10, straightness=2):
+    def build_routes(self, num_routes=None, max_length=30000, min_length=10000, straightness=2):
 
         self.num_routes = num_routes
         if num_routes is None:
@@ -171,7 +174,7 @@ class Transit:
         while len(self.routes) < self.num_routes:
             route = PTRoute(
                 network=self.network.g,
-                node_weights=self.density,
+                node_weights=self.density**2,
                 node_lookup=self.network.node_index_lookup,
                 existing_routes=self.routes,
                 max_length=max_length,
@@ -509,3 +512,24 @@ class NodesOD:
 
     def lookup(self, o, d):
         return self.matrix[self.index_lookup[o], self.index_lookup[d]]
+
+
+def nx_to_geojson(g, path, epsg="EPSG:27700", to_epsg=None):
+
+        links = []
+
+        for idx, (u, v, d) in enumerate(g.edges(data=True)):
+            linestring = LineString([g.nodes[u]['pos'], g.nodes[v]['pos']])
+            index = f"00{idx}"
+            links.append({
+                    'id': index,
+                    'distance': d.get("distance"),
+                    'freespeed': d.get("freespeed"),
+                    'label': d.get("label", ("unknown", "unknown"))[1],
+                    'geometry': linestring,
+                    })
+
+        gdf = gp.GeoDataFrame(links, geometry="geometry", crs=epsg)
+        if to_epsg is not None:
+            gdf = gdf.to_crs(to_epsg)
+        gdf.to_file(path, driver='GeoJSON')

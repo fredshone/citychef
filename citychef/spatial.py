@@ -4,6 +4,7 @@ from shapely.geometry import Point
 from sklearn.neighbors import KDTree
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import geopandas as gp
 
 
 logging.basicConfig(level=logging.INFO)
@@ -61,11 +62,11 @@ class Centres:
 
 class Clusters:
 
-    def __init__(self, centres, size=10000, sigma=1):
+    def __init__(self, parents, size=10000, sigma=1):
 
-        self.parents = centres
+        self.parents = parents
 
-        numb_units = np.random.poisson(size / centres.size, centres.size)
+        numb_units = np.random.poisson(size / parents.size, parents.size)
 
         ids = []
         for i, units in enumerate(numb_units):
@@ -75,8 +76,8 @@ class Clusters:
         self.count = sum(numb_units)  # total number of points
 
         self.centres = np.zeros((self.count, 2))  # centre coordinates for all
-        self.centres[:, 0] = np.repeat(centres.locs[:, 0], numb_units)
-        self.centres[:, 1] = np.repeat(centres.locs[:, 1], numb_units)
+        self.centres[:, 0] = np.repeat(parents.locs[:, 0], numb_units)
+        self.centres[:, 1] = np.repeat(parents.locs[:, 1], numb_units)
 
         self.offsets = np.zeros((self.count, 2))
         self.offsets[:, 0] = np.random.normal(0, sigma, self.count)  # (relative) x coordinates
@@ -87,14 +88,24 @@ class Clusters:
         self.locs[:, 0] = self.centres[:, 0] + self.offsets[:, 0]
         self.locs[:, 1] = self.centres[:, 1] + self.offsets[:, 1]
 
-        # adjust bbox
+    @property
+    def bbox(self):
         maxx, minx = max(self.locs[:, 0]), min(self.locs[:, 0])
         maxy, miny = max(self.locs[:, 1]), min(self.locs[:, 1])
-        self.bbox = np.array(((minx, miny), (maxx, maxy)))
+        return np.array(((minx, miny), (maxx, maxy)))
+
+    def crop_to_bbox(self, bbox):
+        (minx, miny), (maxx, maxy) = bbox
+        mask = (self.locs[:,0] < maxx) & (self.locs[:,0] > minx) & (self.locs[:,1] < maxy) & (self.locs[:,1] > miny)
+        self.locs = self.locs[mask]
+        self.ids = self.ids[mask]
+        self.centres = self.centres[mask]
+        self.offsets = self.offsets[mask]
+        return self
 
     @property
     def size(self):
-        return self.count
+        return len(self.locs)
 
     @property
     def x(self):
@@ -132,7 +143,23 @@ class Clusters:
         return f"{self.size} units, {self.parents.size} centres"
 
 
-def plot_facilities(facilities, centres=None, ax=None, alpha=.4, s=10):
+def write_buildings_geojson(facilities, path, epsg="EPSG:27700", to_epsg=None):
+    idxs = []
+    activities = []
+    geoms = []
+    for name, facs in facilities.items():
+        idxs.extend(list(range(facs.size)))
+        activities.extend([name]*facs.size)
+        geoms.extend(facs.points)
+    data = {"index": idxs, "activity": activities, "geometry": geoms}
+    # print(data)
+    gdf = gp.GeoDataFrame(data, geometry="geometry", crs=epsg)
+    if to_epsg is not None:
+        gdf = gdf.to_crs(to_epsg)
+    gdf.to_file(path, driver='GeoJSON')
+
+
+def plot_facilities(facilities, centres=None, ax=None, alpha=.4, s=4):
 
     if ax is None:
         fig = plt.figure(figsize=(10, 10))
@@ -151,7 +178,7 @@ def plot_facilities(facilities, centres=None, ax=None, alpha=.4, s=10):
     handles = []
     for name, facility in facilities.items():
         c = next(colour)
-        ax.scatter(facility.x, facility.y, alpha=alpha, s=s, marker='.', c=c)
+        ax.scatter(facility.x, facility.y, alpha=alpha, s=s, marker='s', c=c)
         handles.append(mpatches.Patch(color=c, label=name))
     ax.legend(title='Facilities:', handles=handles)
 

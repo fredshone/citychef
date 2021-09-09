@@ -3,20 +3,30 @@ from halo import HaloNotebook as Halo
 import os
 import networkx as nx
 import pandas as pd
+from pyproj import Transformer
 
 
 def build_gtfs(
         transit,
+        name,
         out_dir,
         agency_id=0,
         agency_name='test_bus_inc',
-        route_type=3
+        frequency=15,
+        route_type=3,
+        from_epsg="epsg:27700",
+        to_epsg=None,
 ):
     """https://developers.google.com/transit/gtfs/examples/gtfs-feed"""
 
     with Halo(text='Building GTFS...', spinner='dots') as spinner:
 
-        gtfs_dir = os.path.join(out_dir, 'gtfs')
+        if to_epsg:
+            transformer = Transformer.from_crs(from_epsg, to_epsg, always_xy=True)
+        else:
+            transformer = None
+
+        gtfs_dir = os.path.join(out_dir, f'gtfs_{name}')
         if not os.path.exists(gtfs_dir):
             os.mkdir(gtfs_dir)
 
@@ -36,13 +46,15 @@ def build_gtfs(
         stop_times = []
 
         for node, data in transit.graph.nodes(data=True):
-            pos = data['pos']
+            x, y = data['pos']
+            if transformer is not None:
+                x, y = transformer.transform(x, y)
             stops.append({
                 'stop_id': node,
                 'stop_code': node,
                 'stop_name': node,
-                'stop_lat': pos[1],
-                'stop_lon': pos[0],
+                'stop_lat': x,
+                'stop_lon': y,
                 'wheelchair_boarding': 'yes',
                 'stop_timezone': 'NA',
                 'location_type': 'NA',
@@ -80,14 +92,16 @@ def build_gtfs(
                 'checkin_duration': 'NA',
             })
 
-            start_times = [
-                datetime(year=2020, month=2, day=7, hour=h) for h in range(8, 24)
-            ]
-            stop_time = timedelta(seconds=30)
-            leg_time = timedelta(seconds=90)
+            start_time = datetime(year=2021, month=9, day=9, hour=5)
+            end_time = datetime(year=2021, month=9, day=9, hour=22)
+            interval = timedelta(minutes=frequency)
+            stop_time = timedelta(seconds=60)
+            leg_time = timedelta(seconds=120)
 
-            for trip_idx, start_time in enumerate(start_times):
-
+            
+            trip_idx = 0
+            while start_time < end_time:
+                
                 trip_id = f"{route_id}-{trip_idx}"
                 spinner.text = f'adding trip {trip_id}, start time {start_time}'
 
@@ -104,9 +118,15 @@ def build_gtfs(
 
                 arrival_time = start_time
 
+                previous_node = None
                 for stop_idx, node in enumerate(
                         nx.dfs_preorder_nodes(route.g, source=route.start_node)):
                     spinner.text = f'adding route {route_id} trip {trip_id} , start time {start_time}, stop {stop_idx}'
+                    
+                    if previous_node is not None:
+                        leg_seconds = transit.network.g.edges[previous_node][node]["weight"]
+                        leg_time = timedelta(seconds=leg_seconds)
+                        arrival_time += leg_time
 
                     departure_time = arrival_time + stop_time
 
@@ -122,7 +142,9 @@ def build_gtfs(
                         'shape_dist_traveled': '',
                         'timepoint': 1,
                     })
-                    arrival_time += leg_time
+
+                trip_idx += 1
+                start_time += interval
 
         agency_df = pd.DataFrame(agency)
         stops_df = pd.DataFrame(stops)

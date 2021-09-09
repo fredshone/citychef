@@ -1,6 +1,7 @@
 from lxml import etree as et
 import os
 import pandas as pd
+
 import gzip
 import halo
 
@@ -64,7 +65,7 @@ def write_content(content, location, **kwargs):
 
 
 def nx_to_osm(g, path):
-    with Halo(text='Building attributes xml...', spinner='dots') as spinner:
+    with Halo(text='Building OSM network xml...', spinner='dots') as spinner:
 
         osm = et.Element('osm', {'version': '0.6', 'generator': 'JOSM'})  # start forming xml
         bounds_element = et.SubElement(
@@ -90,7 +91,7 @@ def nx_to_osm(g, path):
             )
         spinner.text = 'added all nodes'
 
-        for idx, (u, v) in enumerate(g.edges()):
+        for idx, (u, v, d) in enumerate(g.edges(data=True)):
             index = f"00{idx}"
             way_element = et.SubElement(
                 osm,
@@ -124,8 +125,8 @@ def nx_to_osm(g, path):
                 way_element,
                 'tag',
                 {
-                    'k': 'highway',
-                    'v': 'unclassified',
+                    'k': d.get("label", ("unknown", "unknown"))[0],
+                    'v': d.get("label", ("unknown", "unknown"))[1],
                 }
             )
 
@@ -133,3 +134,5 @@ def nx_to_osm(g, path):
 
         write_content(osm, location=path)
         spinner.succeed('done')
+
+

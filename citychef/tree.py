@@ -25,7 +25,7 @@ class BaseBlock:
         W = 6
         E = 7
 
-    def __init__(self, bbox, data, max_points, parent=None, depth=0, random_length=None):
+    def __init__(self, bbox, data, max_points, parent=None, depth=0, random_length=None, label="highway"):
 
         """
         :param bbox: [minx, miny, maxx, maxy]
@@ -39,6 +39,7 @@ class BaseBlock:
         self.parent = parent
         self.depth = depth
         self.random_length = random_length
+        self.label = label
         self.num_points = len(data)
 
         self.bbox = bbox
@@ -134,32 +135,47 @@ class BaseBlock:
         offset_w = (centre_x - minx) / 2
 
         if self.random_length is not None:
-            def length(d):
+            def length(d):  # m
                 d += np.random.poisson(self.random_length)
                 return d
         else:
             def length(d):
                 return d
 
-        def freespeed(d):
+        def freespeed(d):  # km/hr
 
-            if d > 5:  # freeway
-                speed = 130 / 3600  # km/s
+            if d > 3000:  # freeway
+                speed = 130
                 return speed
-            if d > 2:
-                speed = 100 / 3600  # km/s
+            if d > 800:
+                speed = 100
                 return speed
-            if d > 1:
-                speed = 60 / 3600  # km/s
+            if d > 100:
+                speed = 60
                 return speed
-            if d > .5:
-                speed = 40 / 3600  # km/s
+            if d > 50:
+                speed = 40
                 return speed
-            speed = 30 / 3600  # km/s
+            speed = 30
             return speed
 
-        def time(d, speed):
-            return d / speed
+        def time(d, speed):  # seconds
+            return (d / 1000 / speed) * 3600
+
+        def label(speed):
+            if self.label == "railway":
+                return ("railway", "rail")
+            if self.label == "highway":
+                if s > 100:
+                    return ("highway", "motorway")
+                if s > 60:
+                    return ("highway", "primary")
+                if s > 40:
+                    return ("highway", "secondary")
+                if s > 30:
+                    return ("highway", "tertiary")
+                return ("highway", "residential")
+            raise UserWarning(f"Unrecognised label: {self.label}")
 
         self.junctions = {
             "centre": (f"00{idx}", (centre_x, centre_y), 0),
@@ -179,26 +195,26 @@ class BaseBlock:
                 d = length(offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s)
-                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s)
+                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s, label=label(s))
             if n == "south":
                 d = length(offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s)
-                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s)
+                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s, label=label(s))
             if n == "east":
                 d = length(offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s)
-                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s)
+                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s, label=label(s))
             if n == "west":
                 d = length(offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s)
-                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s)
+                G.add_edge(self.junctions["centre"][0], name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(name, self.junctions["centre"][0], weight=t, distance=d, freespeed=s, label=label(s))
 
         if self.parent:
 
@@ -210,16 +226,16 @@ class BaseBlock:
                 d = length(offset + p_offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
-                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s, label=label(s))
                 # connect self east to parent south
                 name, pos, offset = self.junctions['east']
                 p_name, p_pos, p_offset = self.parent.junctions['south']
                 d = length(offset + p_offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
-                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s, label=label(s))
 
             elif self.parent.children[self.Child.NW] == self:
                 # connect self south to parent west
@@ -228,16 +244,16 @@ class BaseBlock:
                 d = length(offset + p_offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
-                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s, label=label(s))
                 # connect self east to parent north
                 name, pos, offset = self.junctions['east']
                 p_name, p_pos, p_offset = self.parent.junctions['north']
                 d = length(offset + p_offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
-                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s, label=label(s))
 
             elif self.parent.children[self.Child.NE] == self:
                 # connect self south to parent east
@@ -246,16 +262,16 @@ class BaseBlock:
                 d = length(offset + p_offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
-                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s, label=label(s))
                 # connect self west to parent north
                 name, pos, offset = self.junctions['west']
                 p_name, p_pos, p_offset = self.parent.junctions['north']
                 d = length(offset + p_offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
-                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s, label=label(s))
 
             elif self.parent.children[self.Child.SE] == self:
                 # connect self north to parent east
@@ -264,16 +280,16 @@ class BaseBlock:
                 d = length(offset + p_offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
-                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s, label=label(s))
                 # connect self west to parent south
                 name, pos, offset = self.junctions['west']
                 p_name, p_pos, p_offset = self.parent.junctions['south']
                 d = length(offset + p_offset)
                 s = freespeed(d)
                 t = time(d, s)
-                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s)
-                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s)
+                G.add_edge(name, p_name, weight=t, distance=d, freespeed=s, label=label(s))
+                G.add_edge(p_name, name, weight=t, distance=d, freespeed=s, label=label(s))
 
     def get_neighbor_of_greater_or_equal_size(self, direction):
         if direction == self.Direction.N:
